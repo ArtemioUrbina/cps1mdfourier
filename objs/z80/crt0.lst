@@ -1,0 +1,97 @@
+                                      1    .module crt0
+                                      2    .globl  _main
+                                      3    .area  _HEADER (ABS)
+                                      4 
+                                      5 ;------------------
+                                      6 ; Z-80 starts here!
+                                      7 ;------------------
+      000000                          8 .org 0
+      000000 C3r00r01         [10]    9    jp init  
+                                     10 
+                                     11 ;--------------
+                                     12 ; INTERRUPT
+                                     13 ;--------------
+      000038                         14 .org 0x38
+      000038 F3               [ 4]   15    DI                     ; Disable Interrupt
+      000039 CDr00r00         [17]   16    call _interrupt        ; Process Interrupt
+      00003C CDr00r00         [17]   17    call _requestInterrupt ; Request the interrupt re-trigger
+      00003F FB               [ 4]   18    EI                     ; Enable  Interrupt
+      000040 C9               [10]   19    RET 
+                                     20 
+                                     21 ;--------------
+                                     22 ; INIT and MAIN
+                                     23 ;--------------
+      000100                         24 .org 0x100
+      000100                         25 init:
+                                     26    
+      000100 31 FF D7         [10]   27    ld  sp,#0xd7ff    ; Setup stack
+      000103 ED 56            [ 8]   28    IM 1              ; Set Interrupt mode 1
+      000105 CDr00r00         [17]   29    call  gsinit      ; Init global variables
+      000108                         30 main:  
+      000108 CDr00r00         [17]   31    call  _main       ; Infinite loop
+      00010B C3r00r00         [10]   32    jp    _exit       ; Never happens
+                                     33 
+                                     34    ; Ordering of segments for the linker.
+                                     35    .area _HOME
+                                     36    .area _CODE
+                                     37    .area _INITIALIZER
+                                     38    .area _GSINIT
+                                     39    .area _GSFINAL
+                                     40 
+                                     41    .area _DATA
+                                     42    .area _INITIALIZED
+                                     43    .area _BSEG
+                                     44    .area _BSS
+                                     45    .area _HEAP
+                                     46 
+      000000                         47 _exit:
+      000000 C3r08r01         [10]   48    jp main
+                                     49 
+                                     50 ;----------------------------
+                                     51 ; Initialize global variables
+                                     52 ; Copy values from ROM > RAM.
+                                     53 ;----------------------------
+                                     54    .area _GSINIT
+      000000                         55 gsinit::
+      000000 01r00r00         [10]   56    ld  bc, #l__INITIALIZER
+      000003 78               [ 4]   57    ld  a, b
+      000004 B1               [ 4]   58    or  a, c
+      000005 28 08            [12]   59    jr  Z, gsinit_next
+      000007 11r00r00         [10]   60    ld  de, #s__INITIALIZED
+      00000A 21r00r00         [10]   61    ld  hl, #s__INITIALIZER
+      00000D ED B0            [21]   62    ldir
+      00000F                         63 gsinit_next:
+                                     64    .area _GSFINAL
+      000000 C9               [10]   65    ret
+                                     66 
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180 / ZX-Next / eZ80), page 1.
+Hexadecimal [24-Bits]
+
+Symbol Table
+
+    .__.$$$.=  002710 L   |     .__.ABS.=  000000 G   |     .__.CPU.=  000000 L
+    .__.H$L.=  000000 L   |   D _exit      000000 R   |     _interru   ****** GX
+    _main      ****** GX  |     _request   ****** GX  |   7 gsinit     000000 GR
+  7 gsinit_n   00000F R   |   4 init       000100 R   |     l__INITI   ****** GX
+  4 main       000108 R   |     s__INITI   ****** GX  |     s__INITI   ****** GX
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180 / ZX-Next / eZ80), page 2.
+Hexadecimal [24-Bits]
+
+Area Table
+
+   0 _CODE      size      0   flags    0
+   1 _HEADER    size      0   flags    8
+   2 _HEADER0   size      3   flags    8
+   3 _HEADER1   size      9   flags    8
+   4 _HEADER2   size      E   flags    8
+   5 _HOME      size      0   flags    0
+   6 _INITIAL   size      0   flags    0
+   7 _GSINIT    size      F   flags    0
+   8 _GSFINAL   size      1   flags    0
+   9 _DATA      size      0   flags    0
+   A _INITIAL   size      0   flags    0
+   B _BSEG      size      0   flags    0
+   C _BSS       size      0   flags    0
+   D _HEAP      size      3   flags    0
+

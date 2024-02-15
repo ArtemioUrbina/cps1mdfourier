@@ -1,0 +1,138 @@
+                                      1 ;--------------------------------------------------------
+                                      2 ; File Created by SDCC : free open source ANSI-C Compiler
+                                      3 ; Version 4.2.0 #13081 (Linux)
+                                      4 ;--------------------------------------------------------
+                                      5 	.module main
+                                      6 	.optsdcc -mz80
+                                      7 	
+                                      8 ;--------------------------------------------------------
+                                      9 ; Public variables in this module
+                                     10 ;--------------------------------------------------------
+                                     11 	.globl _main
+                                     12 	.globl _requestInterrupt
+                                     13 	.globl _interrupt
+                                     14 	.globl _lastLatch
+                                     15 	.globl _latch
+                                     16 	.globl _LATCH1
+                                     17 	.globl _OKI
+                                     18 	.globl _YM2151_DAT
+                                     19 	.globl _YM2151_ADR
+                                     20 ;--------------------------------------------------------
+                                     21 ; special function registers
+                                     22 ;--------------------------------------------------------
+                                     23 ;--------------------------------------------------------
+                                     24 ; ram data
+                                     25 ;--------------------------------------------------------
+                                     26 	.area _DATA
+                           00F000    27 _YM2151_ADR	=	0xf000
+                           00F001    28 _YM2151_DAT	=	0xf001
+                           00F002    29 _OKI	=	0xf002
+                           00F008    30 _LATCH1	=	0xf008
+                                     31 ;--------------------------------------------------------
+                                     32 ; ram data
+                                     33 ;--------------------------------------------------------
+                                     34 	.area _INITIALIZED
+      000000                         35 _latch::
+      000000                         36 	.ds 1
+      000001                         37 _lastLatch::
+      000001                         38 	.ds 1
+                                     39 ;--------------------------------------------------------
+                                     40 ; absolute external ram data
+                                     41 ;--------------------------------------------------------
+                                     42 	.area _DABS (ABS)
+                                     43 ;--------------------------------------------------------
+                                     44 ; global & static initialisations
+                                     45 ;--------------------------------------------------------
+                                     46 	.area _HOME
+                                     47 	.area _GSINIT
+                                     48 	.area _GSFINAL
+                                     49 	.area _GSINIT
+                                     50 ;--------------------------------------------------------
+                                     51 ; Home
+                                     52 ;--------------------------------------------------------
+                                     53 	.area _HOME
+                                     54 	.area _HOME
+                                     55 ;--------------------------------------------------------
+                                     56 ; code
+                                     57 ;--------------------------------------------------------
+                                     58 	.area _CODE
+                                     59 ;src/z80/main.c:15: void interrupt() {
+                                     60 ;	---------------------------------
+                                     61 ; Function interrupt
+                                     62 ; ---------------------------------
+      000000                         63 _interrupt::
+                                     64 ;src/z80/main.c:16: latch = LATCH1;
+      000000 3A 08 F0         [13]   65 	ld	a, (_LATCH1+0)
+      000003 32r00r00         [13]   66 	ld	(_latch+0), a
+                                     67 ;src/z80/main.c:18: if (lastLatch == latch) {
+      000006 3Ar01r00         [13]   68 	ld	a, (_lastLatch+0)
+      000009 FD 21r00r00      [14]   69 	ld	iy, #_latch
+      00000D FD 96 00         [19]   70 	sub	a, 0 (iy)
+      000010 C8               [11]   71 	ret	Z
+                                     72 ;src/z80/main.c:19: return;
+      000011 18 00            [12]   73 	jr	00102$
+      000013                         74 00102$:
+                                     75 ;src/z80/main.c:22: lastLatch = latch;
+      000013 3Ar00r00         [13]   76 	ld	a, (_latch+0)
+      000016 32r01r00         [13]   77 	ld	(_lastLatch+0), a
+                                     78 ;src/z80/main.c:24: if (latch == NO_OP) {
+      000019 3Ar00r00         [13]   79 	ld	a, (_latch+0)
+      00001C 3C               [ 4]   80 	inc	a
+      00001D C8               [11]   81 	ret	Z
+                                     82 ;src/z80/main.c:25: return;
+      00001E 18 00            [12]   83 	jr	00104$
+      000020                         84 00104$:
+                                     85 ;src/z80/main.c:28: OKI = 0x80 | latch; // First bit must be 1 then sound ID.
+      000020 3Ar00r00         [13]   86 	ld	a, (_latch+0)
+      000023 F6 80            [ 7]   87 	or	a, #0x80
+      000025 32 02 F0         [13]   88 	ld	(_OKI+0), a
+                                     89 ;src/z80/main.c:29: OKI = 0x80; // 0x80 = Channel 4  !   0x00 = No sound reduction.
+      000028 21 02 F0         [10]   90 	ld	hl, #_OKI
+      00002B 36 80            [10]   91 	ld	(hl), #0x80
+                                     92 ;src/z80/main.c:30: }
+      00002D C9               [10]   93 	ret
+                                     94 ;src/z80/main.c:32: void requestInterrupt() {
+                                     95 ;	---------------------------------
+                                     96 ; Function requestInterrupt
+                                     97 ; ---------------------------------
+      00002E                         98 _requestInterrupt::
+                                     99 ;src/z80/main.c:40: YM2151_ADR = YM2151_REG_CLKA1;
+      00002E 21 00 F0         [10]  100 	ld	hl, #_YM2151_ADR
+      000031 36 10            [10]  101 	ld	(hl), #0x10
+                                    102 ;src/z80/main.c:41: YM2151_DAT = 0xC8;
+      000033 21 01 F0         [10]  103 	ld	hl, #_YM2151_DAT
+      000036 36 C8            [10]  104 	ld	(hl), #0xc8
+                                    105 ;src/z80/main.c:44: YM2151_ADR = YM2151_REG_CLKA2;
+      000038 21 00 F0         [10]  106 	ld	hl, #_YM2151_ADR
+      00003B 36 11            [10]  107 	ld	(hl), #0x11
+                                    108 ;src/z80/main.c:45: YM2151_DAT = 0x00;
+      00003D 21 01 F0         [10]  109 	ld	hl, #_YM2151_DAT
+      000040 36 00            [10]  110 	ld	(hl), #0x00
+                                    111 ;src/z80/main.c:46: }
+      000042 C9               [10]  112 	ret
+                                    113 ;src/z80/main.c:48: void main() {
+                                    114 ;	---------------------------------
+                                    115 ; Function main
+                                    116 ; ---------------------------------
+      000043                        117 _main::
+                                    118 ;src/z80/main.c:50: YM2151_ADR = YM2151_REG_CTRL;
+      000043 21 00 F0         [10]  119 	ld	hl, #_YM2151_ADR
+      000046 36 14            [10]  120 	ld	(hl), #0x14
+                                    121 ;src/z80/main.c:51: YM2151_DAT = 0x15;
+      000048 21 01 F0         [10]  122 	ld	hl, #_YM2151_DAT
+      00004B 36 15            [10]  123 	ld	(hl), #0x15
+                                    124 ;src/z80/main.c:55: requestInterrupt();
+      00004D CDr2Er00         [17]  125 	call	_requestInterrupt
+                                    126 ;src/z80/main.c:57: while(1) {
+      000050                        127 00102$:
+                                    128 ;src/z80/main.c:58: interrupt();
+      000050 CDr00r00         [17]  129 	call	_interrupt
+                                    130 ;src/z80/main.c:60: }
+      000053 18 FB            [12]  131 	jr	00102$
+                                    132 	.area _CODE
+                                    133 	.area _INITIALIZER
+      000000                        134 __xinit__latch:
+      000000 00                     135 	.db #0x00	; 0
+      000001                        136 __xinit__lastLatch:
+      000001 FF                     137 	.db #0xff	; 255
+                                    138 	.area _CABS (ABS)

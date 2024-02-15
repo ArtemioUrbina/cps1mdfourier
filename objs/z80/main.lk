@@ -1,0 +1,9 @@
+-mjwx
+-i objs/z80/main.ihx
+-b _CODE = 0x0200
+-b _DATA = 0xd000
+-k /usr/share/sdcc/lib/z80
+-l z80
+objs/z80/crt0.rel
+objs/z80/main.rel
+
