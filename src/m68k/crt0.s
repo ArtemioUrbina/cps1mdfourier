@@ -43,7 +43,7 @@ loopinit:
     bls     loopinit
 
 * Set stack pointer
-	move.l	#0xFFF000, sp
+    move.l  #0xFFF000, sp
 
     * Initialize BSS section
     move.l  #_end, d0

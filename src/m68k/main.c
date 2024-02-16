@@ -12,11 +12,11 @@
 #define CPSA_REG __attribute__ ((section (".cpsa_reg")))  
 #define CPSB_REG __attribute__ ((section (".cpsb_reg")))  
 
-#define	MAXSPRITES	256
+#define MAXSPRITES  256
 typedef struct {
-    WORD	x;			// Sprite x position
-    WORD	y;			// Sprite y position
-    WORD	tile;		// Sprite tile
+    WORD    x;          // Sprite x position
+    WORD    y;          // Sprite y position
+    WORD    tile;       // Sprite tile
     
     // 0..4 CB[0..4] Palette ID used to render the tile
     // 5 X Flip Mirrored horizontally
@@ -24,7 +24,7 @@ typedef struct {
     // 7 LOOKUP Looks up the CB value into the RAM for each tile (see later section)
     // 8..11 XB[0..3] Horizontal size in tiles
     // 12..15 YB[0..3] Vertical size in tiles
-    WORD	attributes;   	// Sprite attribute
+    WORD    attributes;     // Sprite attribute
 } Sprite;
 
 // TODO __attribute__ ((aligned (0xFF))) ?
@@ -55,13 +55,12 @@ void setPalette(int page, int paletteID, const Palette* palette) {
 
 static const Palette p = {0xF111,0xFFD9,0xFFB9,0xFE97,0xFC86,0xF965,0xF643,0xFB00,0xFFFF,0xFEEC,0xFDCA,0xFBA8,0xFA87,0xF765,0xFF00,0x0000,};
 
-unsigned int csprite = 0;
 
-void draw() {
+void draw(WORD x,WORD y) {
     setPalette(0, 2, &p); // Upload palette to Palette 2
     Sprite* s = &sprites[0];
-    s->x = 220+csprite++;
-    s->y = 100;
+    s->x = x;
+    s->y = y;
     s->tile = 4;
     s->attributes = 2 |  5 << 12 | 3 << 8; // user Palette 2 since it is where we placed it.
     
@@ -71,11 +70,10 @@ void draw() {
 
 /* inputs */
 
-#define _P1_INPUTS_ADDR  0x800000
-#define P1_INPUT *((volatile char*)_P1_INPUTS_ADDR)
-
-#define _P2_INPUTS_ADDR  0x800001
-#define P2_INPUT *((volatile char*)_P2_INPUTS_ADDR)
+#define _PLAYER_INPUTS_ADDR  0x800000
+#define PLAYER_INPUTS *((volatile WORD*)_PLAYER_INPUTS_ADDR)
+BYTE player1 = 0;
+BYTE player2 = 0;
 
 #define D_RIGHT     0x01
 #define D_LEFT      0x02
@@ -84,6 +82,14 @@ void draw() {
 #define BUTTON_1    0x10
 #define BUTTON_2    0x20
 #define BUTTON_3    0x40
+
+void readJoysticks() {
+    int inputs = 0;
+
+    inputs = ~(PLAYER_INPUTS);
+    player1 = inputs & 0x00FF;
+    player2 = (inputs >> 8) & 0x00FF;
+}
 
 
 /* Z80 commands */
@@ -99,17 +105,18 @@ void draw() {
 #define Z80_NO_OP       0xFF
 
 #define _Z80_LATCH1 0x800181
-#define Z80_CMD *((volatile char*)_Z80_LATCH1)
+#define Z80_CMD *((volatile BYTE*)_Z80_LATCH1)
 
-void sendZ80(unsigned int cmd) {
+void sendZ80(BYTE cmd) {
     Z80_CMD = cmd;
 }
 
 /* Vsync handler */
-volatile unsigned int vsyncActive = 0;
+volatile WORD vsyncActive = 0;
 
 void onVSync() {
     vsyncActive = 1;
+    readJoysticks();
 }
 
 void waitVsync() {
@@ -120,48 +127,48 @@ void waitVsync() {
 
 /* MDF functions */
 
-void ExecutePulseTrain(int channel)
+void ExecutePulseTrain()
 {
-	int f = 0;
-	//Sync
+    WORD f = 0;
+    //Sync
 
-	for(f = 0; f < 10; f++)
-	{
+    for(f = 0; f < 10; f++)
+    {
         sendZ80(Z80_PULSE_ON);
-		waitVsync();
+        waitVsync();
         sendZ80(Z80_PULSE_OFF);
-		waitVsync();
-	}
+        waitVsync();
+    }
 }
 
-void WaitFrames(int frames)
+void WaitFrames(WORD frames)
 {
-	int frame = 0;
-	
-	//Silence
-	for(frame = 0; frame < frames; frame++)
-		waitVsync();
+    WORD frame = 0;
+    
+    //Silence
+    for(frame = 0; frame < frames; frame++)
+        waitVsync();
 }
 
 void ExecuteFM()
 {
-	int octave, frame;
-	
-	// FM Test
-	for(octave = 0; octave < 8; octave ++) {
-		int note;
-		
-		for(note = 0; note < 16; note++) {
+    WORD octave, frame;
+    
+    // FM Test
+    for(octave = 0; octave < 8; octave ++) {
+        WORD note;
+        
+        for(note = 0; note < 16; note++) {
             sendZ80(Z80_PLAY_NOTE);
-			
-			for(frame = 0; frame < 20; frame++) {					
-				if(frame == 16) {
+            
+            for(frame = 0; frame < 20; frame++) {
+                if(frame == 16) {
                     sendZ80(Z80_STOP_NOTE);
-				}
-				waitVsync();
-			}
-		}
-	}
+                }
+                waitVsync();
+            }
+        }
+    }
 
     sendZ80(Z80_SILENCE);
 }
@@ -175,7 +182,7 @@ void MDFourier() {
     WaitFrames(1);
 
     // start MDFourier
-    ExecutePulseTrain(0);
+    ExecutePulseTrain();
     WaitFrames(20);
 
     ExecuteFM();
@@ -187,43 +194,53 @@ void MDFourier() {
     // end MDFourier
     sendZ80(Z80_RESET_PULSE);
     WaitFrames(20);
-    ExecutePulseTrain(0);
+    ExecutePulseTrain();
 
     sendZ80(Z80_SILENCE);
 }
 
 int run() {
-
+    WORD x = 220, y = 100;
     // Start Z80 with NO_OP
     sendZ80(Z80_NO_OP);
 
-    WaitFrames(100);
-    MDFourier();
-
-    draw(); 
-    cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
-
-
     while(1) {   
-        char input = P1_INPUT;
+        draw(x, y); 
+        cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
 
         // Wait for user Input
-        if(!(input & BUTTON_1)) {
+        if(player1 & BUTTON_1) {
             MDFourier();
         }
 
-        if(!(input & BUTTON_2)) {
+        if(player1 & BUTTON_2) {
             sendZ80(Z80_ADPCM);
             waitVsync();
             sendZ80(Z80_RESET_PULSE);
         }
 
-        //if(!(input & BUTTON_2)) {
-            draw(); 
-            cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
-        //}
+        if(player1 & BUTTON_3) {
+            x = 220;
+            y = 100;
+        }
+
+        if(player1 & D_UP) {
+            y--;
+        }
+
+        if(player1 & D_DOWN) {
+            y++;
+        }
+
+        if(player1 & D_RIGHT) {
+            x++;
+        }
+
+        if(player1 & D_LEFT) {
+            x--;
+        }
 
         waitVsync();
     }
-	return 0;
+    return 0;
 }
