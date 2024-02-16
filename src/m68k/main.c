@@ -56,15 +56,21 @@ void setPalette(int page, int paletteID, const Palette* palette) {
 static const Palette p = {0xF111,0xFFD9,0xFFB9,0xFE97,0xFC86,0xF965,0xF643,0xFB00,0xFFFF,0xFEEC,0xFDCA,0xFBA8,0xFA87,0xF765,0xFF00,0x0000,};
 
 
-void draw(WORD x,WORD y) {
+void draw(WORD x,WORD y, BYTE flip) {
     setPalette(0, 2, &p); // Upload palette to Palette 2
     Sprite* s = &sprites[0];
     s->x = x;
     s->y = y;
     s->tile = 4;
-    s->attributes = 2 |  5 << 12 | 3 << 8; // user Palette 2 since it is where we placed it.
+    s->attributes = 2 |  5 << 12 | 3 << 8 | flip; // user Palette 2 since it is where we placed it.
     
     sprites[1].attributes = 0xFF00; // Last sprite marker
+    cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
+}
+
+void clearSprites() {
+    sprites[0].attributes = 0xFF00; // Last sprite marker
+    cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
 }
 
 
@@ -200,16 +206,18 @@ void MDFourier() {
 }
 
 int run() {
+    BYTE face = 0;
     WORD x = 220, y = 100;
+ 
     // Start Z80 with NO_OP
     sendZ80(Z80_NO_OP);
 
     while(1) {   
-        draw(x, y); 
-        cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
+        draw(x, y, face); 
 
         // Wait for user Input
         if(player1 & BUTTON_1) {
+            clearSprites();
             MDFourier();
         }
 
@@ -233,10 +241,14 @@ int run() {
         }
 
         if(player1 & D_RIGHT) {
+            if(!face)
+                face = 0x20;
             x++;
         }
 
         if(player1 & D_LEFT) {
+            if(face)
+                face = 0;
             x--;
         }
 
