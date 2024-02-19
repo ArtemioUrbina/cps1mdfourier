@@ -4,7 +4,7 @@
 #define REG_YM2151_DAT *((volatile char*)0xF001)
 #define REG_OKI *((volatile char*)0xF002)
 #define REG_BANK_SWITCH *((volatile char*)0xF004)
-#define REG_OKY_QUALITY_SWITCH *((volatile char*)0xF006)
+#define REG_OKI_QUALITY_SWITCH *((volatile char*)0xF006)
 #define REG_LATCH1 *((volatile char*)0xF008)
 #define REG_LATCH2 *((volatile char*)0xF00A)
 
@@ -151,14 +151,19 @@ void ymPlay(int8_t channel, int8_t note, int8_t octave, int8_t pan)
 #define Z80_SILENCE     0x04
 #define Z80_PLAY_NOTE   0x05
 #define Z80_STOP_NOTE   0x06
-#define Z80_ADPCM       0x07
+#define Z80_ADPCM_QLOW  0x07
+#define Z80_ADPCM_QHI   0x08
+#define Z80_ADPCM_PLAY  0x09
+#define Z80_ADPCM_REDCT 0x10
+#define Z80_ADPCM_STOP  0x11
 #define Z80_NO_OP       0xFF
 
 int8_t latch = 0;
 int8_t chann = 0;
 int8_t note = 0;
 int8_t octave = 0;
-
+int8_t quality = 1;
+int8_t reduction = 0;
 
 volatile int8_t lastLatch = Z80_NO_OP;
 
@@ -169,8 +174,9 @@ void handleCommand(int8_t command) {
             chann = 0;
             note = 0;
             octave = 0;
+            quality = 1;
+            reduction = 0;
             yminit();
-            //REG_OKY_QUALITY_SWITCH = 1;
             break;
         case Z80_PULSE_ON:
             YM2151_writeReg(0x08, 0x78);
@@ -204,9 +210,29 @@ void handleCommand(int8_t command) {
             if(chann > 3)
                 chann = 0;
             break;
-        case Z80_ADPCM:
+        case Z80_ADPCM_QLOW:
+            quality = 0;
+            REG_OKI = 0x78; // 0111 1000
+            break;
+        case Z80_ADPCM_QHI:
+            quality = 1;
+            REG_OKI = 0x78; // 0111 1000
+            break;
+        case Z80_ADPCM_PLAY:
+            REG_OKI_QUALITY_SWITCH = quality;
             REG_OKI = 0x81; // First bit must be 1 then sound ID, first sample the sweep
             REG_OKI = 0x80; // 0x80 = Channel 4  !   0x00 = No sound reduction.
+            break;
+        case Z80_ADPCM_REDCT:
+            REG_OKI_QUALITY_SWITCH = quality;
+            REG_OKI = 0x82; // First bit must be 1 then sound ID, second sample the 1khz tone
+            REG_OKI = 0x80 | (0x0F & reduction); // 0x10 = Channel 1  !   0x00 = No sound reduction.
+            reduction ++;
+            if(reduction >= 8)
+                reduction = 0;
+            break;
+        case Z80_ADPCM_STOP:
+            REG_OKI = 0x78; // 0111 1000
             break;
         default:
             break;

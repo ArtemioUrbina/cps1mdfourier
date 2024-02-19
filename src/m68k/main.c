@@ -80,6 +80,10 @@ void clearSprites() {
 #define PLAYER_INPUTS *((volatile WORD*)_PLAYER_INPUTS_ADDR)
 BYTE player1 = 0;
 BYTE player2 = 0;
+BYTE player1buf = 0;
+BYTE player2buf = 0;
+BYTE pressedp1 = 0;
+BYTE pressedp2 = 0;
 
 #define D_RIGHT     0x01
 #define D_LEFT      0x02
@@ -90,11 +94,16 @@ BYTE player2 = 0;
 #define BUTTON_3    0x40
 
 void readJoysticks() {
-    int inputs = 0;
+    WORD inputs = 0;
 
     inputs = ~(PLAYER_INPUTS);
     player1 = inputs & 0x00FF;
+    pressedp1 = player1 & ~player1buf;
+    player1buf = player1;
+
     player2 = (inputs >> 8) & 0x00FF;
+    pressedp2 = player2 & ~player2buf;
+    player2buf = player2;
 }
 
 
@@ -107,7 +116,11 @@ void readJoysticks() {
 #define Z80_SILENCE     0x04
 #define Z80_PLAY_NOTE   0x05
 #define Z80_STOP_NOTE   0x06
-#define Z80_ADPCM       0x07
+#define Z80_ADPCM_QLOW  0x07
+#define Z80_ADPCM_QHI   0x08
+#define Z80_ADPCM_PLAY  0x09
+#define Z80_ADPCM_REDCT 0x10
+#define Z80_ADPCM_STOP  0x11
 #define Z80_NO_OP       0xFF
 
 #define _Z80_LATCH1 0x800181
@@ -126,9 +139,9 @@ void onVSync() {
 }
 
 void waitVsync() {
-    vsyncActive = 0;
     while(vsyncActive == 0) {
     }
+    vsyncActive = 0;
 }
 
 /* MDF functions */
@@ -138,8 +151,7 @@ void ExecutePulseTrain()
     WORD f = 0;
     //Sync
 
-    for(f = 0; f < 10; f++)
-    {
+    for(f = 0; f < 10; f++) {
         sendZ80(Z80_PULSE_ON);
         waitVsync();
         sendZ80(Z80_PULSE_OFF);
@@ -179,23 +191,60 @@ void ExecuteFM()
     sendZ80(Z80_SILENCE);
 }
 
+void ExecuteADPCMSweeps() {
+    sendZ80(Z80_ADPCM_QHI);
+    WaitFrames(4);
+    sendZ80(Z80_ADPCM_PLAY);
+    WaitFrames(300);        // 5 seconds
 
-/* main program */
+    sendZ80(Z80_ADPCM_QLOW);
+    WaitFrames(4);
+    sendZ80(Z80_ADPCM_PLAY);
+    WaitFrames(372);        // 6.22 seconds
+
+    sendZ80(Z80_ADPCM_STOP);
+}
+
+void ExecuteADPCMReductions() {
+    WORD count = 0;
+
+    sendZ80(Z80_ADPCM_QHI);
+    WaitFrames(4);
+    for(count = 0; count < 8; count ++) {
+        sendZ80(Z80_ADPCM_REDCT);
+        WaitFrames(30);
+        sendZ80(Z80_ADPCM_STOP);
+        WaitFrames(2);
+    }
+    sendZ80(Z80_ADPCM_QLOW);
+    WaitFrames(4);
+    for(count = 0; count < 8; count ++) {
+        sendZ80(Z80_ADPCM_REDCT);
+        WaitFrames(30);
+        sendZ80(Z80_ADPCM_STOP);
+        WaitFrames(2);
+    }
+
+    sendZ80(Z80_ADPCM_STOP);
+}
 
 void MDFourier() {
     // init the z80 and wait
+    sendZ80(Z80_ADPCM_STOP);
+    WaitFrames(1);
     sendZ80(Z80_INIT);
     WaitFrames(1);
 
     // start MDFourier
-    ExecutePulseTrain();
-    WaitFrames(20);
+    ExecutePulseTrain();        // 20 frames
+    WaitFrames(20);             // 20 frames
 
-    ExecuteFM();
+    // Tones
+    ExecuteFM();                // 2560 frames
 
-    WaitFrames(4);
-    sendZ80(Z80_ADPCM);
-    WaitFrames(300);        // 5 seconds
+    ExecuteADPCMSweeps();
+
+    ExecuteADPCMReductions();
 
     // end MDFourier
     sendZ80(Z80_RESET_PULSE);
@@ -204,6 +253,8 @@ void MDFourier() {
 
     sendZ80(Z80_SILENCE);
 }
+
+/* main program */
 
 int run() {
     BYTE face = 0;
@@ -216,18 +267,19 @@ int run() {
         draw(x, y, face); 
 
         // Wait for user Input
-        if(player1 & BUTTON_1) {
+        if(pressedp1 & BUTTON_1) {
             clearSprites();
             MDFourier();
         }
 
-        if(player1 & BUTTON_2) {
-            sendZ80(Z80_ADPCM);
+        if(pressedp1 & BUTTON_2) {
+            sendZ80(Z80_ADPCM_STOP);
             waitVsync();
-            sendZ80(Z80_RESET_PULSE);
+            sendZ80(Z80_ADPCM_REDCT);
+            waitVsync();
         }
 
-        if(player1 & BUTTON_3) {
+        if(pressedp1 & BUTTON_3) {
             x = 220;
             y = 100;
         }
