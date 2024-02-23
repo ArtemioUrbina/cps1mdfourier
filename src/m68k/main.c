@@ -3,6 +3,8 @@
 #include "cpsa.h" // This is auto-generated
 #include "cpsb.h" // This is auto-gemerated
 
+#include "../z80/z80commands.h"
+
 // https://gcc.gnu.org/onlinedocs/gcc-3.2/gcc/Variable-Attributes.html
 // https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_chapter/ld_3.html
 // https://mcuoneclipse.com/2016/11/01/getting-the-memory-range-of-sections-with-gnu-linker-files/
@@ -36,9 +38,45 @@ GFXRAM Sprite sprites [MAXSPRITES]  =  {};
 // TODO __attribute__ ((aligned ( 0x400))) ?
 GFXRAM Palette palettes[32];
 
-CPSA_REG WORD cpsa_reg[0x20] = {};
-CPSB_REG WORD cpsb_reg[0x20] = {};
+#define _Z80_LATCH1 0x800181
+#define Z80_CMD *((volatile BYTE*)_Z80_LATCH1)
 
+void sendZ80(BYTE cmd) {
+    Z80_CMD = cmd;
+}
+
+CPSA_REG volatile WORD cpsa_reg[0x20] = {};
+CPSB_REG volatile WORD cpsb_reg[0x20] = {};
+
+/* Init called before "main" (run) */
+
+void hardwareInit() {
+    //move.b  #0x00f0, 0x800181
+    sendZ80(Z80_NO_OP);
+    //move.w  #0xffc0, 0x80010c 
+    cpsa_reg[CPSA_REG_SCROLL1_SCROLLX] = 0x0000;
+    //move.w  #0x0000, 0x80010e
+    cpsa_reg[CPSA_REG_SCROLL1_SCROLLY] = 0x0000;
+    //move.w  #0x9100, 0x800100
+    cpsa_reg[CPSA_REG_SPRITES_BASE] = 0x9100;
+    //move.w  #0x90c0, 0x800102
+    cpsa_reg[CPSA_REG_SCROLL1_BASE] = 0x90c0;
+    //move.w  #0x9040, 0x800104
+    cpsa_reg[CPSA_REG_SCROLL2_BASE] = 0x9040;
+    //move.w  #0x9080, 0x800106
+    cpsa_reg[CPSA_REG_SCROLL3_BASE] = 0x9080;
+    //move.w  #0x9200, 0x800108
+    cpsa_reg[CPSA_REG_OTHER_BASE] = 0x9200;
+
+    //move.w  #0x12c2, 0x800168
+    cpsb_reg[CPSB_REG_CTRL] = 0x12c2;
+    //move.w  #0x003e, 0x800122
+    cpsa_reg[CPSA_REG_VIDEOCONTROL] = 0x003e;
+    //move.w  #0x003f, 0x800172
+    cpsb_reg[CPSB_REG_PALETTE_CONTROL] = 0x003f;
+    //move.w  #0x9000, 0x80010a
+    cpsa_reg[CPSA_REG_PALETTE_BASE] = 0x9000;
+}
 
 void setPalette(int page, int paletteID, const Palette* palette) {
 
@@ -78,6 +116,7 @@ void clearSprites() {
 
 #define _PLAYER_INPUTS_ADDR  0x800000
 #define PLAYER_INPUTS *((volatile WORD*)_PLAYER_INPUTS_ADDR)
+
 BYTE player1 = 0;
 BYTE player2 = 0;
 BYTE player1buf = 0;
@@ -106,30 +145,6 @@ void readJoysticks() {
     player2buf = player2;
 }
 
-
-/* Z80 commands */
-
-#define Z80_INIT        0x00
-#define Z80_PULSE_ON    0x01
-#define Z80_PULSE_OFF   0x02
-#define Z80_RESET_PULSE 0x03
-#define Z80_SILENCE     0x04
-#define Z80_PLAY_NOTE   0x05
-#define Z80_STOP_NOTE   0x06
-#define Z80_ADPCM_QLOW  0x07
-#define Z80_ADPCM_QHI   0x08
-#define Z80_ADPCM_PLAY  0x09
-#define Z80_ADPCM_REDCT 0x10
-#define Z80_ADPCM_STOP  0x11
-#define Z80_NO_OP       0xFF
-
-#define _Z80_LATCH1 0x800181
-#define Z80_CMD *((volatile BYTE*)_Z80_LATCH1)
-
-void sendZ80(BYTE cmd) {
-    Z80_CMD = cmd;
-}
-
 /* Vsync handler */
 volatile WORD vsyncActive = 0;
 
@@ -139,13 +154,11 @@ void onVSync() {
 }
 
 void waitVsync() {
-    while(vsyncActive == 0) {
-    }
+    while(vsyncActive == 0);
     vsyncActive = 0;
 }
 
 /* MDF functions */
-
 void ExecutePulseTrain()
 {
     WORD f = 0;
@@ -195,12 +208,12 @@ void ExecuteADPCMSweeps() {
     sendZ80(Z80_ADPCM_QHI);
     WaitFrames(4);
     sendZ80(Z80_ADPCM_PLAY);
-    WaitFrames(300);        // 5 seconds
+    WaitFrames(2400);        // 40 seconds
 
     sendZ80(Z80_ADPCM_QLOW);
     WaitFrames(4);
     sendZ80(Z80_ADPCM_PLAY);
-    WaitFrames(372);        // 6.22 seconds
+    WaitFrames(2976);        // 6.22 seconds
 
     sendZ80(Z80_ADPCM_STOP);
 }
@@ -242,8 +255,8 @@ void MDFourier() {
     // Tones
     ExecuteFM();                // 2560 frames
 
+    // ADPCM
     ExecuteADPCMSweeps();
-
     ExecuteADPCMReductions();
 
     // end MDFourier
@@ -260,9 +273,6 @@ int run() {
     BYTE face = 0;
     WORD x = 220, y = 100;
  
-    // Start Z80 with NO_OP
-    sendZ80(Z80_NO_OP);
-
     while(1) {   
         draw(x, y, face); 
 
@@ -273,13 +283,18 @@ int run() {
         }
 
         if(pressedp1 & BUTTON_2) {
-            sendZ80(Z80_ADPCM_STOP);
+            sendZ80(Z80_ADPCM_QHI);
             waitVsync();
             sendZ80(Z80_ADPCM_REDCT);
             waitVsync();
         }
 
         if(pressedp1 & BUTTON_3) {
+            sendZ80(Z80_ADPCM_QHI);
+            waitVsync();
+            sendZ80(Z80_ADPCM_PLAY);
+            waitVsync();
+
             x = 220;
             y = 100;
         }

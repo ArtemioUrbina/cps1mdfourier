@@ -1,0 +1,23 @@
+MDFourierAudioBlockFile 2.3
+Capcom: CPS1 (40s ADPCM)
+[VideoModes] 1
+NTSC 16.767175 262 8015 12 10   ; 59.640338 Hz from audio
+CLK n
+[MonoBalanceBlock] 197          ; Use OKI6295_HI# 65 (197)
+[ToneLines] 16
+Sync s 1 20 0 red m
+WaitDecay k 1 10 0 red m
+Silence n 1 10 0 gray m
+YM2151 1 128 20 4 green s
+    wait_quality k 1 4 0 red m
+OKI6295_HI 2 240 10 0 yellow m
+    wait_quality k 1 4 0 red m
+OKI6295_LO 3 297 10 0 orange m
+    last_frames_lo k 1 6 0 red m
+    mute k 1 4 0 red s
+OKI6295_AMP_HI t 8 32 0 magenta m
+    mute k 1 4 0 red s
+OKI6295_AMP_LO t 8 32 0 aqua m
+WaitDecay k 1 10 0 red m
+Silence n 1 10 0 gray m
+Sync s 1 20 0 red m

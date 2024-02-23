@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "z80commands.h"
 
 #define REG_YM2151_ADR *((volatile char*)0xF000)
 #define REG_YM2151_DAT *((volatile char*)0xF001)
@@ -12,41 +13,39 @@
 #define YM2151_REG_CLKA2 0x11
 #define YM2151_REG_CTRL  0x14
 
+#define STEREO_RIGHT    0x80
+#define STEREO_LEFT     0x40
+#define STEREO_BOTH     0xC0
+
+int8_t latch = 0;
+int8_t chann = 0;
+int8_t note = 0;
+int8_t octave = 0;
+int8_t quality = 1;
+int8_t reduction = 0;
+volatile int8_t c = 0;
+
+volatile int8_t lastLatch = Z80_NO_OP;
+
 /* YM21521 functions */
 
-inline void waitYM2151() {
-    while(REG_YM2151_DAT == 0x80) {
-        // Wait until YM2151 is ready for write
-    }
-}
-
 void YM2151_writeReg(int8_t adr, int8_t dat) {
-    waitYM2151();
+    while(REG_YM2151_DAT == 0x80); // Wait until YM2151 is ready for write
     REG_YM2151_ADR = adr;
+    while(REG_YM2151_DAT == 0x80); // Wait until YM2151 is ready for write
     REG_YM2151_DAT = dat;
 }
 
-void ym2151_keyoff(int8_t channel)
-{   
+void ym2151_keyoff(int8_t channel) {   
     YM2151_writeReg(0x08, channel &0x07);
 }
 
-void ym2151_keyoffAll()
-{
-    int8_t c = 0;
-
+void ym2151_keyoffAll() {
     for(c = 0; c < 8; c ++)
         ym2151_keyoff(c);
 }
 
-void SilenceMDF()
-{
-    ym2151_keyoffAll();
-}
-
-
-void ymloadchannel(int8_t channel)
-{
+void ymloadchannel(int8_t channel) {
 //0x38 Phase & amplitude modulation sensitivity PMS: 0x00 AMS: 0x00
     YM2151_writeReg(0x38+channel, 0x00);
 //0x40 Detune & phase multiply Slot: 0000 Decay: 0x00 Multi: 0x04
@@ -103,10 +102,7 @@ void ymloadchannel(int8_t channel)
     YM2151_writeReg(0x28+channel, 0x6C);
 }
 
-void yminit()
-{
-    int8_t c = 0;
-
+void yminit() {
 //0x01 Test LFO Reset
     YM2151_writeReg(0x01, 0x02);
 //0x0F Noise disable Freq: 0x000
@@ -124,8 +120,7 @@ void yminit()
         ymloadchannel(c);
 }
 
-void ymPlay(int8_t channel, int8_t note, int8_t octave, int8_t pan)
-{
+void ymPlay(int8_t channel, int8_t note, int8_t octave, int8_t pan) {
     ym2151_keyoff(channel);
 
     // set stereo balance Feedback: 000 Connection: 111
@@ -138,37 +133,7 @@ void ymPlay(int8_t channel, int8_t note, int8_t octave, int8_t pan)
     YM2151_writeReg(0x08, 0x78+channel);
 }
 
-/* Communication with 68K functions */
-
-#define STEREO_RIGHT    0x80
-#define STEREO_LEFT     0x40
-#define STEREO_BOTH     0xC0
-
-#define Z80_INIT        0x00
-#define Z80_PULSE_ON    0x01
-#define Z80_PULSE_OFF   0x02
-#define Z80_RESET_PULSE 0x03
-#define Z80_SILENCE     0x04
-#define Z80_PLAY_NOTE   0x05
-#define Z80_STOP_NOTE   0x06
-#define Z80_ADPCM_QLOW  0x07
-#define Z80_ADPCM_QHI   0x08
-#define Z80_ADPCM_PLAY  0x09
-#define Z80_ADPCM_REDCT 0x10
-#define Z80_ADPCM_STOP  0x11
-#define Z80_NO_OP       0xFF
-
-int8_t latch = 0;
-int8_t chann = 0;
-int8_t note = 0;
-int8_t octave = 0;
-int8_t quality = 1;
-int8_t reduction = 0;
-
-volatile int8_t lastLatch = Z80_NO_OP;
-
 void handleCommand(int8_t command) {
-
     switch(command) {
         case Z80_INIT:
             chann = 0;
@@ -189,7 +154,7 @@ void handleCommand(int8_t command) {
             YM2151_writeReg(0x28, 0x6C);
             break;
         case Z80_SILENCE:
-            SilenceMDF();
+            ym2151_keyoffAll();
             break;
         case Z80_PLAY_NOTE:
             ymPlay(chann, note, octave, STEREO_LEFT);
@@ -225,7 +190,10 @@ void handleCommand(int8_t command) {
             break;
         case Z80_ADPCM_REDCT:
             REG_OKI_QUALITY_SWITCH = quality;
-            REG_OKI = 0x82; // First bit must be 1 then sound ID, second sample the 1khz tone
+            if(quality == 1)
+                REG_OKI = 0x82; // First bit must be 1 then sound ID, second sample the 1khz tone
+            else
+                REG_OKI = 0x83; // third sample the 798hz tone so that it matches 1khz when played in low
             REG_OKI = 0x80 | (0x0F & reduction); // 0x10 = Channel 1  !   0x00 = No sound reduction.
             reduction ++;
             if(reduction >= 8)

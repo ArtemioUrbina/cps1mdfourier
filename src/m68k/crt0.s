@@ -1,6 +1,8 @@
     .globl  _start
     .globl  atexit
 
+    .extern hardwareInit
+    .extern onVSync
     .extern run
     .extern _end
 
@@ -30,9 +32,11 @@ VBlank:
 
 .align  4
 _start:
-    * Following arcade code
     * Reset coin control
     move.b  #0x80, 0x800030
+    nop
+    nop
+    nop
     move.b  #0x00, 0x800030
 
     lea     0x900000, A0
@@ -42,7 +46,7 @@ loopinit:
     cmpa.l  A1, A0
     bls     loopinit
 
-* Set stack pointer
+    * Set stack pointer
     move.l  #0xFFF000, sp
 
     * Initialize BSS section
@@ -52,23 +56,8 @@ loopinit:
     clr.l   -(sp)
     pea     __bss_start
 
-
-    move.b  #0x00f0, 0x800181
-    move.w  #0xffc0, 0x80010c
-    move.w  #0x0000, 0x80010e
-    move.w  #0x9100, 0x800100
-    move.w  #0x90c0, 0x800102
-    move.w  #0x9040, 0x800104
-    move.w  #0x9080, 0x800106
-    move.w  #0x9200, 0x800108
-
-
-    move.w  #0x12c2, 0x800168
-    move.w  #0x003e, 0x800122
-    move.w  #0x003f, 0x800172
-    move.w  #0x9000, 0x80010a
-
-
+* Call Board initialization for CPSA & CPSB registers and Z80 data
+    jsr     hardwareInit
 
     * Enable interrupts
     move.w  #0x2000, sr
