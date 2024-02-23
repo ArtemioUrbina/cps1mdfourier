@@ -32,7 +32,6 @@ volatile int8_t lastLatch = Z80_NO_OP;
 void YM2151_writeReg(int8_t adr, int8_t dat) {
     while(REG_YM2151_DAT == 0x80); // Wait until YM2151 is ready for write
     REG_YM2151_ADR = adr;
-    while(REG_YM2151_DAT == 0x80); // Wait until YM2151 is ready for write
     REG_YM2151_DAT = dat;
 }
 
@@ -230,23 +229,21 @@ void requestInterrupt() {
     
     // 8 msb
     YM2151_writeReg(YM2151_REG_CLKA1, 0xC8);
-    
     // 2 lsb
     YM2151_writeReg(YM2151_REG_CLKA2, 0x00);
+    // Re-enable timer A
+    YM2151_writeReg(YM2151_REG_CTRL, 0x15);
 }
 
-/* main */
-
 void main() {
-
-    // Enable timer A
-    YM2151_writeReg(YM2151_REG_CTRL, 0x15);
-
+    // Reset timer flags
+    YM2151_writeReg(YM2151_REG_CTRL, 0x30);
+    
     // Request the first interrupt (after that the interrupt handler
     // will call requestInterrupt() after calling interrupt()).
     requestInterrupt();
-
+    
+    // infinite loop, all will be done via timer and interrupts
     while(1) {
-        interrupt();
     }
 }
