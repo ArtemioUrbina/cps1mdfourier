@@ -38,11 +38,16 @@ GFXRAM Sprite sprites [MAXSPRITES]  =  {};
 // TODO __attribute__ ((aligned ( 0x400))) ?
 GFXRAM Palette palettes[32];
 
-#define _Z80_LATCH1 0x800181
-#define Z80_CMD *((volatile BYTE*)_Z80_LATCH1)
+#define Z80_CMD *((volatile BYTE*)0x800181)
+#define Z80_PRM *((volatile BYTE*)0x800189)
 
 void sendZ80(BYTE cmd) {
     Z80_CMD = cmd;
+}
+
+void sendZ80Param(BYTE cmd, BYTE param) {
+    Z80_CMD = cmd;
+    Z80_PRM = param;
 }
 
 CPSA_REG volatile WORD cpsa_reg[0x20] = {};
@@ -51,30 +56,19 @@ CPSB_REG volatile WORD cpsb_reg[0x20] = {};
 /* Init called before "main" (run) */
 
 void hardwareInit() {
-    //move.b  #0x00f0, 0x800181
     sendZ80(Z80_NO_OP);
-    //move.w  #0xffc0, 0x80010c 
+
     cpsa_reg[CPSA_REG_SCROLL1_SCROLLX] = 0x0000;
-    //move.w  #0x0000, 0x80010e
     cpsa_reg[CPSA_REG_SCROLL1_SCROLLY] = 0x0000;
-    //move.w  #0x9100, 0x800100
     cpsa_reg[CPSA_REG_SPRITES_BASE] = 0x9100;
-    //move.w  #0x90c0, 0x800102
     cpsa_reg[CPSA_REG_SCROLL1_BASE] = 0x90c0;
-    //move.w  #0x9040, 0x800104
     cpsa_reg[CPSA_REG_SCROLL2_BASE] = 0x9040;
-    //move.w  #0x9080, 0x800106
     cpsa_reg[CPSA_REG_SCROLL3_BASE] = 0x9080;
-    //move.w  #0x9200, 0x800108
     cpsa_reg[CPSA_REG_OTHER_BASE] = 0x9200;
 
-    //move.w  #0x12c2, 0x800168
     cpsb_reg[CPSB_REG_CTRL] = 0x12c2;
-    //move.w  #0x003e, 0x800122
     cpsa_reg[CPSA_REG_VIDEOCONTROL] = 0x003e;
-    //move.w  #0x003f, 0x800172
     cpsb_reg[CPSB_REG_PALETTE_CONTROL] = 0x003f;
-    //move.w  #0x9000, 0x80010a
     cpsa_reg[CPSA_REG_PALETTE_BASE] = 0x9000;
 }
 
@@ -159,6 +153,10 @@ void waitVsync() {
 }
 
 /* MDF functions */
+
+#define MDF_ADPCM_NORM  0
+#define MDF_ADPCM_LONG  1
+
 void ExecutePulseTrain()
 {
     WORD f = 0;
@@ -204,16 +202,30 @@ void ExecuteFM()
     sendZ80(Z80_SILENCE);
 }
 
-void ExecuteADPCMSweeps() {
+void ExecuteADPCMSweepsShort() {
     sendZ80(Z80_ADPCM_QHI);
     WaitFrames(4);
-    sendZ80(Z80_ADPCM_PLAY);
-    WaitFrames(2400);        // 40 seconds
+    sendZ80Param(Z80_ADPCM_PLAY, PZ80_ADPCM_NORM);    
+    WaitFrames(300);        // 5 seconds
 
     sendZ80(Z80_ADPCM_QLOW);
     WaitFrames(4);
-    sendZ80(Z80_ADPCM_PLAY);
-    WaitFrames(2976);        // 6.22 seconds
+    sendZ80Param(Z80_ADPCM_PLAY, PZ80_ADPCM_NORM);
+    WaitFrames(372);        // 6.22 seconds
+    
+    sendZ80(Z80_ADPCM_STOP);
+}
+
+void ExecuteADPCMSweepsLong() {
+    sendZ80(Z80_ADPCM_QHI);
+    WaitFrames(4);
+    sendZ80Param(Z80_ADPCM_PLAY, PZ80_ADPCM_LONG);
+    WaitFrames(2400);       // 40 seconds
+
+    sendZ80(Z80_ADPCM_QLOW);
+    WaitFrames(4);
+    sendZ80Param(Z80_ADPCM_PLAY, PZ80_ADPCM_LONG);
+    WaitFrames(2976);       // 49.76 seconds
 
     sendZ80(Z80_ADPCM_STOP);
 }
@@ -224,7 +236,7 @@ void ExecuteADPCMReductions() {
     sendZ80(Z80_ADPCM_QHI);
     WaitFrames(4);
     for(count = 0; count < 8; count ++) {
-        sendZ80(Z80_ADPCM_REDCT);
+        sendZ80Param(Z80_ADPCM_REDCT, PZ80_ADPCM_1KHI);
         WaitFrames(30);
         sendZ80(Z80_ADPCM_STOP);
         WaitFrames(2);
@@ -232,7 +244,7 @@ void ExecuteADPCMReductions() {
     sendZ80(Z80_ADPCM_QLOW);
     WaitFrames(4);
     for(count = 0; count < 8; count ++) {
-        sendZ80(Z80_ADPCM_REDCT);
+        sendZ80Param(Z80_ADPCM_REDCT, PZ80_ADPCM_1KLO);
         WaitFrames(30);
         sendZ80(Z80_ADPCM_STOP);
         WaitFrames(2);
@@ -241,7 +253,7 @@ void ExecuteADPCMReductions() {
     sendZ80(Z80_ADPCM_STOP);
 }
 
-void MDFourier() {
+void MDFourier(WORD type) {
     // init the z80 and wait
     sendZ80(Z80_ADPCM_STOP);
     WaitFrames(1);
@@ -256,7 +268,10 @@ void MDFourier() {
     ExecuteFM();                // 2560 frames
 
     // ADPCM
-    ExecuteADPCMSweeps();
+    if(type == MDF_ADPCM_NORM)
+        ExecuteADPCMSweepsShort();
+    else
+        ExecuteADPCMSweepsLong();
     ExecuteADPCMReductions();
 
     // end MDFourier
@@ -279,24 +294,20 @@ int run() {
         // Wait for user Input
         if(pressedp1 & BUTTON_1) {
             clearSprites();
-            MDFourier();
+            MDFourier(MDF_ADPCM_NORM);
         }
 
+        // Wait for user Input
         if(pressedp1 & BUTTON_2) {
-            sendZ80(Z80_ADPCM_QHI);
-            waitVsync();
-            sendZ80(Z80_ADPCM_REDCT);
-            waitVsync();
+            clearSprites();
+            MDFourier(MDF_ADPCM_LONG);
         }
 
         if(pressedp1 & BUTTON_3) {
             sendZ80(Z80_ADPCM_QHI);
             waitVsync();
-            sendZ80(Z80_ADPCM_PLAY);
+            sendZ80Param(Z80_ADPCM_REDCT, PZ80_ADPCM_1KHI);
             waitVsync();
-
-            x = 220;
-            y = 100;
         }
 
         if(player1 & D_UP) {

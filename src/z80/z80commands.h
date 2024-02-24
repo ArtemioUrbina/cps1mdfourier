@@ -14,3 +14,10 @@
 #define Z80_ADPCM_REDCT 0x10
 #define Z80_ADPCM_STOP  0x11
 #define Z80_NO_OP       0xFF
+
+
+/* ADPCM Params */
+#define PZ80_ADPCM_NORM 0x01
+#define PZ80_ADPCM_LONG 0x02
+#define PZ80_ADPCM_1KHI 0x03
+#define PZ80_ADPCM_1KLO 0x04

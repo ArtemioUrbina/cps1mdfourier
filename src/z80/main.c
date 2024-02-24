@@ -18,6 +18,7 @@
 #define STEREO_BOTH     0xC0
 
 int8_t latch = 0;
+int8_t latchData = 0;
 int8_t chann = 0;
 int8_t note = 0;
 int8_t octave = 0;
@@ -132,7 +133,7 @@ void ymPlay(int8_t channel, int8_t note, int8_t octave, int8_t pan) {
     YM2151_writeReg(0x08, 0x78+channel);
 }
 
-void handleCommand(int8_t command) {
+void handleCommand(int8_t command, int8_t param) {
     switch(command) {
         case Z80_INIT:
             chann = 0;
@@ -184,15 +185,12 @@ void handleCommand(int8_t command) {
             break;
         case Z80_ADPCM_PLAY:
             REG_OKI_QUALITY_SWITCH = quality;
-            REG_OKI = 0x81; // First bit must be 1 then sound ID, first sample the sweep
+            REG_OKI = 0x80 | (0x0F & param); // First bit must be 1 then sound ID, first sample the sweep
             REG_OKI = 0x80; // 0x80 = Channel 4  !   0x00 = No sound reduction.
             break;
         case Z80_ADPCM_REDCT:
             REG_OKI_QUALITY_SWITCH = quality;
-            if(quality == 1)
-                REG_OKI = 0x82; // First bit must be 1 then sound ID, second sample the 1khz tone
-            else
-                REG_OKI = 0x83; // third sample the 798hz tone so that it matches 1khz when played in low
+            REG_OKI = 0x80 | (0x0F & param); // First bit must be 1 then sound ID, second sample the 1khz tone
             REG_OKI = 0x80 | (0x0F & reduction); // 0x10 = Channel 1  !   0x00 = No sound reduction.
             reduction ++;
             if(reduction >= 8)
@@ -217,7 +215,8 @@ void interrupt() {
     if (latch == Z80_NO_OP)
         return;
     
-    handleCommand(latch);
+    latchData = REG_LATCH2;
+    handleCommand(latch, latchData);
 }
 
 void requestInterrupt() {
