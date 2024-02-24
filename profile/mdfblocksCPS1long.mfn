@@ -1,7 +1,7 @@
 MDFourierAudioBlockFile 2.3
 Capcom: CPS1 (40s ADPCM)
 [VideoModes] 1
-NTSC 16.767175 262 8015 12 10   ; 59.640338 Hz from audio
+NTSC 16.767236 262 8015 12 10 ; 59.640147 Hz from audio
 CLK n
 [MonoBalanceBlock] 197          ; Use OKI6295_HI# 65 (197)
 [ToneLines] 16

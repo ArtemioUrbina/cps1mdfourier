@@ -282,6 +282,33 @@ void MDFourier(WORD type) {
     sendZ80(Z80_SILENCE);
 }
 
+void MDFourierADPCMOnly(WORD type) {
+    // init the z80 and wait
+    sendZ80(Z80_ADPCM_STOP);
+    WaitFrames(1);
+    sendZ80(Z80_INIT);
+    WaitFrames(1);
+
+    // start MDFourier
+    ExecutePulseTrain();        // 20 frames
+    WaitFrames(20);             // 20 frames
+
+    // ADPCM
+    if(type == MDF_ADPCM_NORM)
+        ExecuteADPCMSweepsShort();
+    else
+        ExecuteADPCMSweepsLong();
+    ExecuteADPCMReductions();
+
+    // end MDFourier
+    sendZ80(Z80_RESET_PULSE);
+    WaitFrames(20);
+    ExecutePulseTrain();
+
+    sendZ80(Z80_SILENCE);
+}
+
+
 /* main program */
 
 int run() {
@@ -304,10 +331,8 @@ int run() {
         }
 
         if(pressedp1 & BUTTON_3) {
-            sendZ80(Z80_ADPCM_QHI);
-            waitVsync();
-            sendZ80Param(Z80_ADPCM_REDCT, PZ80_ADPCM_1KHI);
-            waitVsync();
+            clearSprites();
+            MDFourierADPCMOnly(MDF_ADPCM_NORM);
         }
 
         if(player1 & D_UP) {

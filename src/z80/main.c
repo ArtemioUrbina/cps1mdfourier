@@ -205,8 +205,14 @@ void handleCommand(int8_t command, int8_t param) {
 }
 
 void interrupt() {
+}
+
+void requestInterrupt() {
+}
+
+void processCommands() {
     latch = REG_LATCH1;
-    
+        
     if (lastLatch == latch)
         return;
     
@@ -219,30 +225,10 @@ void interrupt() {
     handleCommand(latch, latchData);
 }
 
-void requestInterrupt() {
-    // The YM2151 runs at the same speed at the Z-80 (3.579MHz)
-    // We want to be interrupted at 4ms interval. That means
-    // setting timer A to 800 so it ticks at 64 * ( 1024 - 800) / 3579.
-    // The Timer A 10 bit is split across 2 registers (A1 and A2). We
-    // write 0xC8 in the A1 and 0 in A2 resulting in value 0xC8 * 4 = 800.
-    
-    // 8 msb
-    YM2151_writeReg(YM2151_REG_CLKA1, 0xC8);
-    // 2 lsb
-    YM2151_writeReg(YM2151_REG_CLKA2, 0x00);
-    // Re-enable timer A
-    YM2151_writeReg(YM2151_REG_CTRL, 0x15);
-}
-
 void main() {
-    // Reset timer flags
-    YM2151_writeReg(YM2151_REG_CTRL, 0x30);
-    
-    // Request the first interrupt (after that the interrupt handler
-    // will call requestInterrupt() after calling interrupt()).
-    requestInterrupt();
-    
-    // infinite loop, all will be done via timer and interrupts
+    // We don't use interrupts to handle everything as fast as possible
+    // otherwise we get slight timing differences
     while(1) {
+        processCommands();
     }
 }
