@@ -14,6 +14,15 @@
 #define CPSA_REG __attribute__ ((section (".cpsa_reg")))  
 #define CPSB_REG __attribute__ ((section (".cpsb_reg")))  
 
+#define GFXSCRL1    0x90c000
+#define GFXSCRL1PTR ((WORD*)GFXSCRL1)
+#define GFXSCRL2    0x904000
+#define GFXSCRL2PTR ((WORD*)GFXSCRL2)
+#define GFXSCRL3    0x908000
+#define GFXSCRL3PTR ((WORD*)GFXSCRL2)
+#define GFXOTHER    0x920000
+#define GFXOTHERPTR ((WORD*)GFXOTHER)
+
 #define MAXSPRITES  256
 typedef struct {
     WORD    x;          // Sprite x position
@@ -38,6 +47,20 @@ GFXRAM Sprite sprites [MAXSPRITES]  =  {};
 // TODO __attribute__ ((aligned ( 0x400))) ?
 GFXRAM Palette palettes[32];
 
+typedef struct {
+    WORD    tile;       // Sroll tile
+    
+    // 0 b00000000_10000000 Unused
+    // 0 b00000000_01100000 Priority group ( See priority mask )
+    // 0 b00000000_00010000 Y Flip
+    // 0 b00000000_00001000 X Flip
+    // 0 b00000000_00000111 Palette ID
+    WORD    attributes;  // Tile attribute
+} Scroll;
+
+// 384x224 = 48x28 chars
+//GFXRAM Scroll scroll1[48*28]  =  {};
+
 #define Z80_CMD *((volatile BYTE*)0x800181)
 #define Z80_PRM *((volatile BYTE*)0x800189)
 
@@ -53,43 +76,36 @@ void sendZ80Param(BYTE cmd, BYTE param) {
 CPSA_REG volatile WORD cpsa_reg[0x20] = {};
 CPSB_REG volatile WORD cpsb_reg[0x20] = {};
 
-/* Init called before "main" (run) */
+static const Palette GrayFontPal = {
+	0xf777, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+	0xf000, 0xfddd, 0xfccc, 0xfbbb, 0xfaaa, 0xf999, 0xf888, 0xf000
+};
 
-void hardwareInit() {
-    sendZ80(Z80_NO_OP);
+static const Palette Ryu = {
+    0xF111, 0xFFD9, 0xFFB9, 0xFE97, 0xFC86, 0xF965, 0xF643, 0xFB00,
+    0xFFFF, 0xFEEC, 0xFDCA, 0xFBA8, 0xFA87, 0xF765, 0xFF00, 0x0000
+};
 
-    cpsa_reg[CPSA_REG_SCROLL1_SCROLLX] = 0x0000;
-    cpsa_reg[CPSA_REG_SCROLL1_SCROLLY] = 0x0000;
-    cpsa_reg[CPSA_REG_SPRITES_BASE] = 0x9100;
-    cpsa_reg[CPSA_REG_SCROLL1_BASE] = 0x90c0;
-    cpsa_reg[CPSA_REG_SCROLL2_BASE] = 0x9040;
-    cpsa_reg[CPSA_REG_SCROLL3_BASE] = 0x9080;
-    cpsa_reg[CPSA_REG_OTHER_BASE] = 0x9200;
-
-    cpsb_reg[CPSB_REG_CTRL] = 0x12c2;
-    cpsa_reg[CPSA_REG_VIDEOCONTROL] = 0x003e;
-    cpsb_reg[CPSB_REG_PALETTE_CONTROL] = 0x003f;
-    cpsa_reg[CPSA_REG_PALETTE_BASE] = 0x9000;
-}
-
-void setPalette(int page, int paletteID, const Palette* palette) {
+void LoadPalettes() {
+    for(int base = 0x0; base <= 0xBF0; base += 0x10) {
+        for (int j = 0 ; j < 16 ; j++) {
+		    ((WORD*)palettes)[j+base] = GrayFontPal.colors[j];
+        }
+    }
 
     for (int j = 0 ; j < 16 ; j++) {
-        palettes[paletteID].colors[j] = (*palette).colors[j];
+        palettes[2].colors[j] = Ryu.colors[j];
     }
-    
-    // Request upload palette page to sprites
-    cpsb_reg[CPSB_REG_PALETTE_CONTROL] =  1;
+
+    // Request upload all palettes
+    cpsb_reg[CPSB_REG_PALETTE_CONTROL] = 0x3f;
     
     // Set palette base
     cpsa_reg[CPSA_REG_PALETTE_BASE] = (WORD)(((DWORD)palettes) >> 8);
 }
 
-static const Palette p = {0xF111,0xFFD9,0xFFB9,0xFE97,0xFC86,0xF965,0xF643,0xFB00,0xFFFF,0xFEEC,0xFDCA,0xFBA8,0xFA87,0xF765,0xFF00,0x0000,};
-
-
 void draw(WORD x,WORD y, BYTE flip) {
-    setPalette(0, 2, &p); // Upload palette to Palette 2
+    //setPalette(0, 2, &p); // Upload palette to Palette 2
     Sprite* s = &sprites[0];
     s->x = x;
     s->y = y;
@@ -108,7 +124,7 @@ void clearSprites() {
 
 /* inputs */
 
-#define _PLAYER_INPUTS_ADDR  0x800000
+#define _PLAYER_INPUTS_ADDR     0x800000
 #define PLAYER_INPUTS *((volatile WORD*)_PLAYER_INPUTS_ADDR)
 
 BYTE player1 = 0;
@@ -117,6 +133,19 @@ BYTE player1buf = 0;
 BYTE player2buf = 0;
 BYTE pressedp1 = 0;
 BYTE pressedp2 = 0;
+
+#define _DIP_SWITCH0_ADDR     0x800018
+#define DIPSWITCH0 *((volatile WORD*)_DIP_SWITCH0_ADDR)
+#define _DIP_SWITCH1_ADDR     0x80001A
+#define DIPSWITCH1 *((volatile WORD*)_DIP_SWITCH1_ADDR)
+#define _DIP_SWITCH2_ADDR     0x80001C
+#define DIPSWITCH2 *((volatile WORD*)_DIP_SWITCH2_ADDR)
+#define _DIP_SWITCH3_ADDR     0x80001E
+#define DIPSWITCH3 *((volatile WORD*)_DIP_SWITCH3_ADDR)
+
+BYTE dip1 = 0;
+BYTE dip2 = 0;
+BYTE dip3 = 0;
 
 #define D_RIGHT     0x01
 #define D_LEFT      0x02
@@ -139,12 +168,84 @@ void readJoysticks() {
     player2buf = player2;
 }
 
+void readDIPS() {
+    dip1 = (~(DIPSWITCH1) >> 8) & 0x00FF;
+    dip2 = (~(DIPSWITCH2) >> 8) & 0x00FF;
+    dip3 = (~(DIPSWITCH3) >> 8) & 0x00FF;
+}
+
+/* Init called before "main" (run) */
+
+// Video register values for display
+WORD rega = 0;
+WORD regb = 0;
+
+void hardwareInit() {
+    readJoysticks();
+    readDIPS();
+
+    // Set Z80 latch to 0xFF so nothing will be executed
+    sendZ80(Z80_NO_OP);
+
+    // Scrolls at 0
+    cpsa_reg[CPSA_REG_SCROLL1_SCROLLX] = 0;
+    cpsa_reg[CPSA_REG_SCROLL1_SCROLLY] = 0;
+    // Initialize CPSA&CPSB registers to the memory locations
+    // sprites starts at 0x900000 in the example, Base 1, 2, 3 and
+    //  other point to 0x90c000, 0x904000, 0x908000 and 0x920000
+    cpsa_reg[CPSA_REG_SPRITES_BASE] = (WORD)(((DWORD)sprites) >> 8);
+    cpsa_reg[CPSA_REG_SCROLL1_BASE] = GFXSCRL1 >> 8;
+    cpsa_reg[CPSA_REG_SCROLL2_BASE] = GFXSCRL2 >> 8;
+    cpsa_reg[CPSA_REG_SCROLL3_BASE] = GFXSCRL3 >> 8;
+    cpsa_reg[CPSA_REG_OTHER_BASE] = GFXOTHER >> 8;
+
+    // 0 b00000000_00001000 Enable SCROLL1
+    // 0 b00000000_00010000 Enable SCROLL2
+    // 0 b00000000_00100000 Enable SCROLL3
+    // 0 b00000000_00000000 Cannot control STAR1
+    // 0 b00000000_00000000 Cannot control STAR2
+    // 0 b00000000_11000000 Layer to draw first
+    // 0 b00000011_00000000 Layer to draw second
+    // 0 b00001100_00000000 Layer to draw third
+    // 0 b00110000_00000000 Layer to draw last
+    // Layer IDs : OBJ =0 , SCROLL1 =1 , SCROLL2 =2 , SRCOLL3 =3
+    // OBJ, SCROLL 1, 2 & 3. Scroll disabled
+    // 0001 0010 1100 0010
+    if(pressedp1 & BUTTON_1)
+        regb = ((dip1 << 8) & 0xFF00) | dip2;
+    else
+        regb = 0x12c2;      // 12c2
+    cpsb_reg[CPSB_REG_LAYER_CTRL] = regb;
+
+    // 0 b00000000_0000001 Enable rowscroll
+    // 0 b00000000_1000000 Enable Flip Screen 90 degrees cw
+    // 0011 1110
+    if(pressedp1 & BUTTON_2)
+        rega = 0x0000 | dip3;
+    else
+        rega = 0x003e;      // 3e
+    cpsa_reg[CPSA_REG_VIDEOCONTROL] = rega;
+    
+    // 0 b00000000_00000001 Upload OBJ palette page
+    // 0 b00000000_00000010 Upload SCR1 palette page
+    // 0 b00000000_00000100 Upload SCR2 palette page
+    // 0 b00000000_00001000 Upload SCR3 palette page
+    // 0 b00000000_00010000 Upload STAR1 palette page
+    // 0 b00000000_00100000 Upload STAR2 palette page
+    // Upload all palettes
+    cpsb_reg[CPSB_REG_PALETTE_CONTROL] = 0x003f;
+
+    // This array starts after sprites in GFX RAM, tell CPSA where it is
+    cpsa_reg[CPSA_REG_PALETTE_BASE] = (WORD)(((DWORD)palettes) >> 8);
+}
+
 /* Vsync handler */
 volatile WORD vsyncActive = 0;
 
 void onVSync() {
     vsyncActive = 1;
     readJoysticks();
+    readDIPS();
 }
 
 void waitVsync() {
@@ -308,31 +409,179 @@ void MDFourierADPCMOnly(WORD type) {
     sendZ80(Z80_SILENCE);
 }
 
+/* text */
+
+/*
+Drawing SCROLLs
+Rendering tilemaps is much like rendering OBJs. Descriptors must be written to the
+GFX RAM but the layout is much simpler. Each entry is two 16-bit WORDs wide (four
+bytes).
+SCROLL entry layout : xxxx aaaa
+xxxx = tileID
+aaaa = attributes
+The attribute WORD is a bit field where we find in particular the palette ID, the group ID
+which references the priority mask, and the usual X/Y flippers.
+0 b00000000_10000000 Unused
+0 b00000000_01100000 Priority group ( See priority mask )
+0 b00000000_00010000 Y Flip
+0 b00000000_00001000 X Flip
+0 b00000000_00000111 Palette ID
+All SCROLLs have different size and tile size but they are all considered Sprites (with
+rectangular dimensions). They all feature 64x64 (4,096) entries
+*/
+
+// 384x224 = 48x28 chars
+// chars are 32 bits and row/column are reversed (column-major)
+void writeText(WORD x, WORD y, const char* s) {
+    WORD *tilemap = GFXSCRL1PTR;
+
+	x += 8; // compensate for screen scroll.
+	y += 2;
+    y *= 2;
+	
+	for (;;)
+	{
+		char c = *s++;
+		if (!c)
+			break;
+		WORD* pChar = &tilemap[(x++* 64 + y)]; // swizzling here is weird (and will wrap)
+		*pChar = 0x4000 | c; // tileID, 0x4000 is for sf2ud
+		//*pChar++ = 0x0; // Palette ID, they are all set to 0 in crt0.s
+	}
+}
+
+void cleartext() {
+    WORD* tilemap1 = (WORD*)0x90c000;
+	
+    for (WORD y = 2; y < 28+2; y++)
+    {
+	    for (WORD x = 8; x < 48+8; x++)
+	    {
+		    WORD* pChar = &tilemap1[(x * 64 + y * 2)]; // swizzling here is weird (and will wrap)
+		    *pChar = 0x0000; // tileID, 0x4000 is for sf2ud, ROM offset is 0x10000
+		    //*pChar++ = 0x0; // Palette ID
+	    }
+    }
+}
+
+void printDIPs(WORD x, WORD y) {
+    int pos = 0, originalX = 0;
+	WORD* tilemap = GFXSCRL1PTR;
+
+    x += 8; // compensate for screen scroll.
+	y += 2;
+    y *= 2;
+
+    originalX = x;
+	    
+    for (pos = 0; pos < 8; pos++)
+	{
+		WORD* pChar = &tilemap[(x++* 64 + y)]; // swizzling here is weird (and will wrap)
+        if(dip1 & (1 << pos))
+		    *pChar = 0x4031;
+        else
+            *pChar = 0x4030;
+		//*pChar++ = 0x0; // Palette ID
+	}
+
+    x = originalX;
+    y += 4;
+
+    for (pos = 0; pos < 8; pos++)
+	{
+		WORD* pChar = &tilemap[(x++* 64 + y)]; // swizzling here is weird (and will wrap)
+        if(dip2 & (1 << pos))
+		    *pChar = 0x4031;
+        else
+            *pChar = 0x4030;
+		//*pChar++ = 0x0; // Palette ID
+	}
+
+    x = originalX;
+    y+= 4;
+
+    for (pos = 0; pos < 8; pos++)
+	{
+		WORD* pChar = &tilemap[(x++* 64 + y)]; // swizzling here is weird (and will wrap)
+        if(dip3 & (1 << pos))
+		    *pChar = 0x4031;
+        else
+            *pChar = 0x4030;
+		//*pChar++ = 0x0; // Palette ID
+	}
+}
+
+void printRegs(WORD x, WORD y) {
+	WORD* tilemap1 = (WORD*)0x90c000;
+    int pos = 0, ox = 0;
+
+	x += 8; // compensate for screen scroll.
+	y += 2;
+
+    ox = x;
+    y *= 2;
+	
+    for (pos = 15; pos >= 0; pos--) {
+		WORD* pChar = &tilemap1[(x++* 64 + y)];
+        if(regb & (1 << pos))
+		    *pChar = 0x4031;
+        else
+            *pChar = 0x4030;
+	}
+
+    x = ox;
+    y += 4;
+
+    for (pos = 15; pos >= 0; pos--) {
+		WORD* pChar = &tilemap1[(x++* 64 + y)];
+        if(rega & (1 << pos))
+		    *pChar = 0x4031;
+        else
+            *pChar = 0x4030;
+	}
+}
 
 /* main program */
 
 int run() {
-    BYTE face = 0;
+    BYTE face = 0, drawText = 1;
     WORD x = 220, y = 100;
- 
-    while(1) {   
+
+    LoadPalettes();
+    printRegs(30, 16);
+
+    while(1) {
+        if(drawText) {
+            writeText(6,  6, "Button 1 for MDF YM2151 + short ADPCM");
+            writeText(6,  8, "Button 2 for MDF YM2151 + long ADPCM");
+            writeText(6, 10, "Button 3 for MDF just ADPCM");
+            drawText = 0;
+        }
+
+        printDIPs(34, 20);
         draw(x, y, face); 
 
         // Wait for user Input
         if(pressedp1 & BUTTON_1) {
             clearSprites();
+            cleartext();
             MDFourier(MDF_ADPCM_NORM);
+            drawText = 1;
         }
 
         // Wait for user Input
         if(pressedp1 & BUTTON_2) {
             clearSprites();
+            cleartext();
             MDFourier(MDF_ADPCM_LONG);
+            drawText = 1;
         }
 
         if(pressedp1 & BUTTON_3) {
             clearSprites();
+            cleartext();
             MDFourierADPCMOnly(MDF_ADPCM_NORM);
+            drawText = 1;
         }
 
         if(player1 & D_UP) {
